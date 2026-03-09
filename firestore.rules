@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isPaperOwner(paperId) {
+      return isAuthenticated() && get(/databases/$(database)/documents/papers/$(paperId)).data.creatorUid == request.auth.uid;
+    }
+
+    // Papers collection
+    match /papers/{paperId} {
+      allow read: if isOwner(resource.data.creatorUid);
+      allow create: if isAuthenticated() && request.resource.data.creatorUid == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.creatorUid);
+      
+      // Sections subcollection
+      match /sections/{sectionId} {
+        allow read, write: if isPaperOwner(paperId);
+      }
+      
+      // Questions subcollection
+      match /questions/{questionId} {
+        allow read, write: if isPaperOwner(paperId);
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "QSetter",
+  "description": "A comprehensive question paper setter for teachers with drag-and-drop sections, image uploads, and PDF export.",
+  "requestFramePermissions": []
+}

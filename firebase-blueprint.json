@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Paper": {
+      "title": "Question Paper",
+      "description": "A question paper created by a teacher",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the paper" },
+        "creatorUid": { "type": "string", "description": "UID of the teacher" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "subject": { "type": "string", "description": "Subject of the paper" }
+      },
+      "required": ["title", "creatorUid", "createdAt"]
+    },
+    "Section": {
+      "title": "Section",
+      "description": "A section within a question paper",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Section title (e.g., Section A)" },
+        "marks": { "type": "number", "description": "Total marks for this section" },
+        "questionCount": { "type": "number", "description": "Number of questions to be included in this section" },
+        "order": { "type": "number", "description": "Display order" }
+      },
+      "required": ["title", "marks", "order"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "A question within a section",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "description": "Question text" },
+        "category": { "type": "string", "description": "Category (e.g., MCQ, Short Answer)" },
+        "marks": { "type": "number", "description": "Marks for this question" },
+        "imageUrl": { "type": "string", "description": "URL of an image for equations/diagrams" },
+        "sectionId": { "type": "string", "description": "ID of the section this question belongs to" },
+        "order": { "type": "number", "description": "Display order within the section" }
+      },
+      "required": ["text", "category", "marks", "sectionId", "order"]
+    }
+  },
+  "firestore": {
+    "/papers": { "schema": "Paper", "description": "Collection of question papers" },
+    "/papers/{paperId}/sections": { "schema": "Section", "description": "Sections within a paper" },
+    "/papers/{paperId}/questions": { "schema": "Question", "description": "Questions within a paper" }
+  }
+}
