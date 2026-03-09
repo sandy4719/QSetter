@@ -241,6 +241,8 @@ function MainApp() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [papers, setPapers] = useState<Paper[]>([]);
   const [activePaper, setActivePaper] = useState<Paper | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
@@ -317,10 +319,23 @@ function MainApp() {
 
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
+    setLoginLoading(true);
+    setLoginError(null);
     try {
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      let message = "Login failed. Please try again.";
+      if (error.code === 'auth/popup-blocked') {
+        message = "The login popup was blocked by your browser. Please allow popups for this site.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        message = "This domain is not authorized for login. Please check your Firebase Console settings.";
+      } else if (error.message) {
+        message = error.message;
+      }
+      setLoginError(message);
+    } finally {
+      setLoginLoading(false);
     }
   };
 
@@ -573,13 +588,30 @@ function MainApp() {
           </div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">QSetter</h1>
           <p className="text-slate-600 mb-8">The ultimate question paper builder for modern teachers.</p>
+          
+          {loginError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-left">
+              <AlertTriangle className="text-red-500 shrink-0" size={18} />
+              <p className="text-sm text-red-600">{loginError}</p>
+            </div>
+          )}
+
           <button 
             onClick={handleLogin}
-            className="w-full bg-indigo-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-3"
+            disabled={loginLoading}
+            className="w-full bg-indigo-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-3 disabled:opacity-50"
           >
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
-            Sign in with Google
+            {loginLoading ? (
+              <Loader2 className="animate-spin" size={20} />
+            ) : (
+              <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+            )}
+            {loginLoading ? 'Signing in...' : 'Sign in with Google'}
           </button>
+          
+          <p className="mt-6 text-xs text-slate-400">
+            Note: Ensure popups are allowed and the domain is authorized in your Firebase Console.
+          </p>
         </motion.div>
       </div>
     );
