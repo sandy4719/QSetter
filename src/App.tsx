@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -11,7 +11,9 @@ import {
   LogOut,
   PlusCircle,
   Save,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  RefreshCcw
 } from 'lucide-react';
 import { 
   collection, 
@@ -37,7 +39,7 @@ import {
   signOut,
   User
 } from 'firebase/auth';
-import { db, auth, storage } from './firebase';
+import { db, auth, storage, handleFirestoreError, OperationType } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   DndContext, 
@@ -84,6 +86,89 @@ interface Question {
   imageUrl?: string;
   sectionId: string;
   order: number;
+}
+
+// --- Error Boundary ---
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  props: ErrorBoundaryProps;
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.props = props;
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let errorMessage = this.state.error?.toString();
+      let errorDetails = null;
+
+      try {
+        if (this.state.error?.message) {
+          const parsed = JSON.parse(this.state.error.message);
+          if (parsed.error && parsed.operationType) {
+            errorMessage = `Firestore ${parsed.operationType} error: ${parsed.error}`;
+            errorDetails = parsed;
+          }
+        }
+      } catch (e) {
+        // Not a JSON error
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 text-center">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mb-6">
+            <AlertTriangle size={32} />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">Something went wrong</h1>
+          <p className="text-slate-600 mb-8 max-w-md">
+            {errorMessage || "The application encountered an unexpected error. Please try refreshing the page."}
+          </p>
+          {errorDetails && (
+            <div className="bg-white p-4 rounded-lg border border-slate-200 mb-8 text-left w-full max-w-lg overflow-auto max-h-40">
+              <div className="text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wider">Error Context</div>
+              <pre className="text-[10px] text-red-500 font-mono">
+                {JSON.stringify(errorDetails, null, 2)}
+              </pre>
+            </div>
+          )}
+          {!errorDetails && this.state.error && (
+            <div className="bg-white p-4 rounded-lg border border-slate-200 mb-8 text-left w-full max-w-lg overflow-auto max-h-40">
+              <code className="text-xs text-red-500 font-mono">
+                {this.state.error.toString()}
+              </code>
+            </div>
+          )}
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-indigo-600 text-white py-2 px-6 rounded-lg font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2"
+          >
+            <RefreshCcw size={18} />
+            Refresh Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 // --- Components ---
@@ -145,7 +230,16 @@ const SortableQuestion = ({ question, onEdit, onDelete }: {
 };
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainApp />
+    </ErrorBoundary>
+  );
+}
+
+function MainApp() {
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [papers, setPapers] = useState<Paper[]>([]);
   const [activePaper, setActivePaper] = useState<Paper | null>(null);
@@ -171,13 +265,14 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
+      setIsAuthReady(true);
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isAuthReady) return;
     const q = query(
       collection(db, 'papers'), 
       where('creatorUid', '==', user.uid),
@@ -185,17 +280,22 @@ export default function App() {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setPapers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Paper)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'papers');
     });
     return () => unsubscribe();
   }, [user]);
 
   useEffect(() => {
-    if (!activePaper) return;
+    if (!activePaper || !isAuthReady) return;
     
     const sectionsUnsubscribe = onSnapshot(
       query(collection(db, `papers/${activePaper.id}/sections`), orderBy('order', 'asc')),
       (snapshot) => {
         setSections(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Section)));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, `papers/${activePaper.id}/sections`);
       }
     );
 
@@ -203,6 +303,9 @@ export default function App() {
       query(collection(db, `papers/${activePaper.id}/questions`), orderBy('order', 'asc')),
       (snapshot) => {
         setQuestions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Question)));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, `papers/${activePaper.id}/questions`);
       }
     );
 
@@ -224,7 +327,7 @@ export default function App() {
   const handleLogout = () => signOut(auth);
 
   const loadSampleData = async () => {
-    if (!user) return;
+    if (!user || !isAuthReady) return;
     setLoading(true);
     try {
       const paperRef = await addDoc(collection(db, 'papers'), {
@@ -283,62 +386,78 @@ export default function App() {
         await addDoc(collection(db, `papers/${paperRef.id}/questions`), q);
       }
     } catch (error) {
-      console.error("Failed to load sample data", error);
+      handleFirestoreError(error, OperationType.WRITE, 'papers/sample');
     } finally {
       setLoading(false);
     }
   };
 
   const createPaper = async () => {
-    if (!user || !newPaperTitle) return;
-    const docRef = await addDoc(collection(db, 'papers'), {
-      title: newPaperTitle,
-      subject: newPaperSubject,
-      creatorUid: user.uid,
-      createdAt: serverTimestamp()
-    });
-    setNewPaperTitle('');
-    setNewPaperSubject('');
-    setIsCreatingPaper(false);
-    // Auto-create a default section
-    await addDoc(collection(db, `papers/${docRef.id}/sections`), {
-      title: 'Section A',
-      marks: 20,
-      order: 0
-    });
+    if (!user || !newPaperTitle || !isAuthReady) return;
+    try {
+      const docRef = await addDoc(collection(db, 'papers'), {
+        title: newPaperTitle,
+        subject: newPaperSubject,
+        creatorUid: user.uid,
+        createdAt: serverTimestamp()
+      });
+      setNewPaperTitle('');
+      setNewPaperSubject('');
+      setIsCreatingPaper(false);
+      // Auto-create a default section
+      await addDoc(collection(db, `papers/${docRef.id}/sections`), {
+        title: 'Section A',
+        marks: 20,
+        order: 0
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'papers');
+    }
   };
 
   const addSection = async () => {
-    if (!activePaper) return;
-    await addDoc(collection(db, `papers/${activePaper.id}/sections`), {
-      title: `Section ${String.fromCharCode(65 + sections.length)}`,
-      marks: 20,
-      questionCount: 5,
-      order: sections.length
-    });
+    if (!activePaper || !isAuthReady) return;
+    try {
+      await addDoc(collection(db, `papers/${activePaper.id}/sections`), {
+        title: `Section ${String.fromCharCode(65 + sections.length)}`,
+        marks: 20,
+        questionCount: 5,
+        order: sections.length
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `papers/${activePaper.id}/sections`);
+    }
   };
 
   const deleteSection = async (sectionId: string) => {
-    if (!activePaper) return;
-    await deleteDoc(doc(db, `papers/${activePaper.id}/sections`, sectionId));
-    const sectionQuestions = questions.filter(q => q.sectionId === sectionId);
-    for (const q of sectionQuestions) {
-      await deleteDoc(doc(db, `papers/${activePaper.id}/questions`, q.id));
+    if (!activePaper || !isAuthReady) return;
+    try {
+      await deleteDoc(doc(db, `papers/${activePaper.id}/sections`, sectionId));
+      const sectionQuestions = questions.filter(q => q.sectionId === sectionId);
+      for (const q of sectionQuestions) {
+        await deleteDoc(doc(db, `papers/${activePaper.id}/questions`, q.id));
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `papers/${activePaper.id}/sections/${sectionId}`);
     }
   };
 
   const saveSection = async () => {
-    if (!activePaper || !editingSection || !editingSection.id) return;
-    await updateDoc(doc(db, `papers/${activePaper.id}/sections`, editingSection.id), {
-      title: editingSection.title,
-      marks: editingSection.marks,
-      questionCount: editingSection.questionCount
-    });
-    setEditingSection(null);
+    if (!activePaper || !editingSection || !editingSection.id || !isAuthReady) return;
+    try {
+      await updateDoc(doc(db, `papers/${activePaper.id}/sections`, editingSection.id), {
+        title: editingSection.title,
+        marks: editingSection.marks,
+        questionCount: editingSection.questionCount
+      });
+      setEditingSection(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `papers/${activePaper.id}/sections/${editingSection.id}`);
+    }
   };
 
   const saveQuestion = async () => {
-    if (!activePaper || !editingQuestion || !editingQuestion.sectionId) return;
+    if (!activePaper || !editingQuestion || !editingQuestion.sectionId || !isAuthReady) return;
     
     const questionData = {
       text: editingQuestion.text || '',
@@ -349,17 +468,25 @@ export default function App() {
       order: editingQuestion.id ? editingQuestion.order : questions.filter(q => q.sectionId === editingQuestion.sectionId).length
     };
 
-    if (editingQuestion.id) {
-      await updateDoc(doc(db, `papers/${activePaper.id}/questions`, editingQuestion.id), questionData);
-    } else {
-      await addDoc(collection(db, `papers/${activePaper.id}/questions`), questionData);
+    try {
+      if (editingQuestion.id) {
+        await updateDoc(doc(db, `papers/${activePaper.id}/questions`, editingQuestion.id), questionData);
+      } else {
+        await addDoc(collection(db, `papers/${activePaper.id}/questions`), questionData);
+      }
+      setEditingQuestion(null);
+    } catch (error) {
+      handleFirestoreError(error, editingQuestion.id ? OperationType.UPDATE : OperationType.CREATE, `papers/${activePaper.id}/questions`);
     }
-    setEditingQuestion(null);
   };
 
   const deleteQuestion = async (questionId: string) => {
-    if (!activePaper) return;
-    await deleteDoc(doc(db, `papers/${activePaper.id}/questions`, questionId));
+    if (!activePaper || !isAuthReady) return;
+    try {
+      await deleteDoc(doc(db, `papers/${activePaper.id}/questions`, questionId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `papers/${activePaper.id}/questions/${questionId}`);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -381,19 +508,23 @@ export default function App() {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id || !activePaper) return;
+    if (!over || active.id === over.id || !activePaper || !isAuthReady) return;
 
     const oldIndex = questions.findIndex(q => q.id === active.id);
     const newIndex = questions.findIndex(q => q.id === over.id);
     
     const newQuestions = arrayMove(questions, oldIndex, newIndex) as Question[];
     
-    for (let i = 0; i < newQuestions.length; i++) {
-      if (newQuestions[i].order !== i) {
-        await updateDoc(doc(db, `papers/${activePaper.id}/questions`, newQuestions[i].id), {
-          order: i
-        });
+    try {
+      for (let i = 0; i < newQuestions.length; i++) {
+        if (newQuestions[i].order !== i) {
+          await updateDoc(doc(db, `papers/${activePaper.id}/questions`, newQuestions[i].id), {
+            order: i
+          });
+        }
       }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `papers/${activePaper.id}/questions`);
     }
   };
 
@@ -520,9 +651,14 @@ export default function App() {
                       <FileText size={24} />
                     </div>
                     <button 
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        deleteDoc(doc(db, 'papers', paper.id));
+                        if (!isAuthReady) return;
+                        try {
+                          await deleteDoc(doc(db, 'papers', paper.id));
+                        } catch (error) {
+                          handleFirestoreError(error, OperationType.DELETE, `papers/${paper.id}`);
+                        }
                       }}
                       className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                     >

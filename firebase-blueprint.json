@@ -1,47 +1,56 @@
 {
   "entities": {
     "Paper": {
-      "title": "Question Paper",
-      "description": "A question paper created by a teacher",
+      "title": "Paper",
+      "description": "Represents an exam paper.",
       "type": "object",
       "properties": {
-        "title": { "type": "string", "description": "Title of the paper" },
-        "creatorUid": { "type": "string", "description": "UID of the teacher" },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
-        "subject": { "type": "string", "description": "Subject of the paper" }
+        "title": { "type": "string", "description": "The title of the paper." },
+        "subject": { "type": "string", "description": "The subject of the paper." },
+        "creatorUid": { "type": "string", "description": "The UID of the user who created the paper." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The timestamp when the paper was created." }
       },
       "required": ["title", "creatorUid", "createdAt"]
     },
     "Section": {
       "title": "Section",
-      "description": "A section within a question paper",
+      "description": "Represents a section within an exam paper.",
       "type": "object",
       "properties": {
-        "title": { "type": "string", "description": "Section title (e.g., Section A)" },
-        "marks": { "type": "number", "description": "Total marks for this section" },
-        "questionCount": { "type": "number", "description": "Number of questions to be included in this section" },
-        "order": { "type": "number", "description": "Display order" }
+        "title": { "type": "string", "description": "The title of the section." },
+        "marks": { "type": "number", "description": "Total marks for the section." },
+        "questionCount": { "type": "number", "description": "Number of questions to answer." },
+        "order": { "type": "number", "description": "The display order of the section." }
       },
-      "required": ["title", "marks", "order"]
+      "required": ["title", "order"]
     },
     "Question": {
       "title": "Question",
-      "description": "A question within a section",
+      "description": "Represents a question within an exam paper.",
       "type": "object",
       "properties": {
-        "text": { "type": "string", "description": "Question text" },
-        "category": { "type": "string", "description": "Category (e.g., MCQ, Short Answer)" },
-        "marks": { "type": "number", "description": "Marks for this question" },
-        "imageUrl": { "type": "string", "description": "URL of an image for equations/diagrams" },
-        "sectionId": { "type": "string", "description": "ID of the section this question belongs to" },
-        "order": { "type": "number", "description": "Display order within the section" }
+        "text": { "type": "string", "description": "The text of the question." },
+        "category": { "type": "string", "description": "The category of the question (e.g., MCQ, Short Answer)." },
+        "marks": { "type": "number", "description": "Marks assigned to the question." },
+        "imageUrl": { "type": "string", "description": "Optional URL for a diagram or image." },
+        "sectionId": { "type": "string", "description": "The ID of the section this question belongs to." },
+        "order": { "type": "number", "description": "The display order of the question." }
       },
-      "required": ["text", "category", "marks", "sectionId", "order"]
+      "required": ["text", "sectionId", "order"]
     }
   },
   "firestore": {
-    "/papers": { "schema": "Paper", "description": "Collection of question papers" },
-    "/papers/{paperId}/sections": { "schema": "Section", "description": "Sections within a paper" },
-    "/papers/{paperId}/questions": { "schema": "Question", "description": "Questions within a paper" }
+    "/papers": {
+      "schema": "Paper",
+      "description": "Collection of exam papers."
+    },
+    "/papers/{paperId}/sections": {
+      "schema": "Section",
+      "description": "Subcollection of sections for a specific paper."
+    },
+    "/papers/{paperId}/questions": {
+      "schema": "Question",
+      "description": "Subcollection of questions for a specific paper."
+    }
   }
 }

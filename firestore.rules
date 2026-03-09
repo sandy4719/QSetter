@@ -1,34 +1,109 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: papers
+    // Fields:
+    //   - title: string (required)
+    //   - subject: string (optional)
+    //   - creatorUid: string (required, immutable)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Subcollection: papers/{paperId}/sections
+    // Fields:
+    //   - title: string (required)
+    //   - marks: number (optional)
+    //   - questionCount: number (optional)
+    //   - order: number (required)
+    //
+    // Subcollection: papers/{paperId}/questions
+    // Fields:
+    //   - text: string (required)
+    //   - category: string (optional)
+    //   - marks: number (optional)
+    //   - imageUrl: string (optional)
+    //   - sectionId: string (required)
+    //   - order: number (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-    
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "santhoshkumarbn07@gmail.com" && request.auth.token.email_verified == true));
+    }
+
     function isPaperOwner(paperId) {
       return isAuthenticated() && get(/databases/$(database)/documents/papers/$(paperId)).data.creatorUid == request.auth.uid;
     }
 
-    // Papers collection
+    function isValidPaper(data) {
+      return data.keys().hasAll(['title', 'creatorUid', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.creatorUid == request.auth.uid &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidSection(data) {
+      return data.keys().hasAll(['title', 'order']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.order is number;
+    }
+
+    function isValidQuestion(data) {
+      return data.keys().hasAll(['text', 'sectionId', 'order']) &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 2000 &&
+             data.sectionId is string &&
+             data.order is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
     match /papers/{paperId} {
-      allow read: if isOwner(resource.data.creatorUid);
-      allow create: if isAuthenticated() && request.resource.data.creatorUid == request.auth.uid;
-      allow update, delete: if isOwner(resource.data.creatorUid);
-      
-      // Sections subcollection
+      allow read: if isOwner(resource.data.creatorUid) || isAdmin();
+      allow create: if isAuthenticated() && isValidPaper(request.resource.data);
+      allow update: if isOwner(resource.data.creatorUid) && 
+                      isValidPaper(request.resource.data) &&
+                      request.resource.data.creatorUid == resource.data.creatorUid &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.creatorUid) || isAdmin();
+
       match /sections/{sectionId} {
-        allow read, write: if isPaperOwner(paperId);
+        allow read: if isPaperOwner(paperId) || isAdmin();
+        allow create: if isPaperOwner(paperId) && isValidSection(request.resource.data);
+        allow update: if isPaperOwner(paperId) && isValidSection(request.resource.data);
+        allow delete: if isPaperOwner(paperId) || isAdmin();
       }
-      
-      // Questions subcollection
+
       match /questions/{questionId} {
-        allow read, write: if isPaperOwner(paperId);
+        allow read: if isPaperOwner(paperId) || isAdmin();
+        allow create: if isPaperOwner(paperId) && isValidQuestion(request.resource.data);
+        allow update: if isPaperOwner(paperId) && isValidQuestion(request.resource.data);
+        allow delete: if isPaperOwner(paperId) || isAdmin();
       }
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.role == 'user';
+      allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
     }
   }
 }
