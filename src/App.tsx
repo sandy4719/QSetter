@@ -590,9 +590,33 @@ function MainApp() {
           <p className="text-slate-600 mb-8">The ultimate question paper builder for modern teachers.</p>
           
           {loginError && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-left">
-              <AlertTriangle className="text-red-500 shrink-0" size={18} />
-              <p className="text-sm text-red-600">{loginError}</p>
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex flex-col gap-2 text-left">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="text-red-500 shrink-0" size={18} />
+                <p className="text-sm text-red-600 font-medium">{loginError}</p>
+              </div>
+              {loginError.includes('unauthorized-domain') && (
+                <div className="mt-2 p-3 bg-white rounded-lg border border-red-100 text-xs space-y-2">
+                  <p className="text-slate-600 font-semibold uppercase tracking-wider">Troubleshooting Steps:</p>
+                  <ol className="list-decimal ml-4 space-y-1 text-slate-500">
+                    <li>Copy the domain below.</li>
+                    <li>Go to Firebase Console &gt; Auth &gt; Settings &gt; Authorized Domains.</li>
+                    <li>Add this domain to the list.</li>
+                  </ol>
+                  <div className="flex items-center gap-2 mt-2">
+                    <code className="bg-slate-100 p-1 rounded flex-1 truncate">{window.location.hostname}</code>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(window.location.hostname);
+                        alert('Domain copied to clipboard!');
+                      }}
+                      className="text-indigo-600 font-bold hover:underline"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -612,6 +636,24 @@ function MainApp() {
           <p className="mt-6 text-xs text-slate-400">
             Note: Ensure popups are allowed and the domain is authorized in your Firebase Console.
           </p>
+
+          <div className="mt-8 pt-6 border-t border-slate-100 text-left">
+            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Diagnostic Info</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between text-[10px]">
+                <span className="text-slate-400">Current Domain:</span>
+                <span className="font-mono text-slate-600">{window.location.hostname}</span>
+              </div>
+              <div className="flex justify-between text-[10px]">
+                <span className="text-slate-400">Firebase Project:</span>
+                <span className="font-mono text-slate-600">gen-lang-client-0084013148</span>
+              </div>
+              <div className="flex justify-between text-[10px]">
+                <span className="text-slate-400">Auth Domain:</span>
+                <span className="font-mono text-slate-600">gen-lang-client-0084013148.firebaseapp.com</span>
+              </div>
+            </div>
+          </div>
         </motion.div>
       </div>
     );
